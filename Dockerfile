@@ -13,7 +13,7 @@ COPY mock_upstream ./mock_upstream
 
 # Web 页面服务
 EXPOSE 8000
-# mock 上游的 DNS/控制口（compose 中按服务暴露）
-EXPOSE 53/udp 8080
+# mock 上游的 DNS/控制口（compose 中按服务暴露；DNS 同时监听 UDP 与 TCP）
+EXPOSE 53/udp 53/tcp 8080
 
 CMD ["uvicorn", "dns_forwarder.main:app", "--host", "0.0.0.0", "--port", "8000"]

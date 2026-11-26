@@ -10,8 +10,13 @@ services:
       INITIAL_DELAY: "0"
       A_TTL: "60"
       SOA_MINIMUM: "30"
+      # trunc. 开头的域名：UDP 答复置 TC（默认带 1 条部分地址），TCP 返回 3 条完整地址
+      TRUNCATED_PREFIX: "trunc."
+      TRUNCATED_PARTIAL_ANSWERS: "1"
+      TRUNCATED_FULL_ANSWERS: "3"
     ports:
       - "5301:53/udp"
+      - "5301:53/tcp"
       - "8301:8080"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/delay', timeout=2).status==200 else 1)"]
@@ -30,8 +35,12 @@ services:
       INITIAL_DELAY: "0"
       A_TTL: "60"
       SOA_MINIMUM: "30"
+      TRUNCATED_PREFIX: "trunc."
+      TRUNCATED_PARTIAL_ANSWERS: "1"
+      TRUNCATED_FULL_ANSWERS: "3"
     ports:
       - "5302:53/udp"
+      - "5302:53/tcp"
       - "8302:8080"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/delay', timeout=2).status==200 else 1)"]

@@ -61,7 +61,7 @@
 <body>
 <header>
   <h1>内网 DNS 转发演示</h1>
-  <span class="sub">最长后缀选上游 · TTL 缓存（含 NXDOMAIN）· 等待期间可改规则，旧回包按规则版本作废</span>
+  <span class="sub">最长后缀选上游 · TTL 缓存（含 NXDOMAIN）· UDP 截断自动 TCP 补查 · 等待期间可改规则，旧回包按规则版本作废</span>
 </header>
 
 <main>
@@ -97,7 +97,7 @@
   <section class="panel full">
     <h2>试查 A 记录</h2>
     <div class="row">
-      <input id="query-name" placeholder="域名，如 git.corp.local（nx. 开头的域名上游回 NXDOMAIN）"
+      <input id="query-name" placeholder="域名，如 git.corp.local（nx. 开头回 NXDOMAIN；trunc. 开头 UDP 截断、TCP 返回完整地址）"
              style="flex:1;min-width:260px" />
       <button id="btn-query">查询</button>
       <span id="query-state" class="muted"></span>
@@ -112,7 +112,7 @@
       <button class="ghost" id="btn-clear-cache" style="margin-left:auto">清空缓存</button>
     </h2>
     <table>
-      <thead><tr><th>域名</th><th>状态</th><th>地址</th><th>上游</th><th>命中后缀</th><th>TTL</th><th>剩余</th></tr></thead>
+      <thead><tr><th>域名</th><th>状态</th><th>地址</th><th>上游</th><th>命中后缀</th><th>来源</th><th>TTL</th><th>剩余</th></tr></thead>
       <tbody id="cache-tbody"></tbody>
     </table>
   </section>
@@ -251,6 +251,9 @@ function renderResult(r) {
     : '<span class="tag muted" style="background:rgba(138,160,182,.15)">回源查询</span>';
   const staleNote = r.stale_discarded
     ? `<div class="tag warn" style="margin-top:8px">等待期间规则变化，已丢弃 ${r.stale_discarded} 个旧回包并按现行规则重查</div>` : "";
+  const transportNote = r.udp_truncated
+    ? `<div class="tag warn" style="margin-top:8px">UDP 答复带截断标记，内容不完整；已用 TCP 向同一上游补查，结果与 TTL 以完整答复为准</div>`
+    : "";
   const body = r.status === "ERROR"
     ? `<div class="kv"><div class="k">错误</div><div>${r.error}</div></div>`
     : `<div class="kv">
@@ -261,10 +264,11 @@ function renderResult(r) {
             : `<b>${r.status}</b>`
         }</div>
         <div class="k">上游</div><div class="mono">${r.upstream_id} <span class="muted">(后缀 ${r.suffix || "*"})</span></div>
+        <div class="k">传输</div><div class="mono">${r.transport === "tcp" ? "TCP 补查（UDP 曾截断）" : "UDP"}</div>
         <div class="k">缓存</div><div>${cacheTag}</div>
         <div class="k">TTL</div><div class="mono">${r.ttl}s（报文 TTL: ${(r.raw_ttls && r.raw_ttls.length) ? r.raw_ttls.join(", ") : "—"}），剩余 ${r.remaining_ttl}s</div>
         <div class="k">耗时</div><div class="mono">${r.elapsed_ms} ms</div>
-      </div>${staleNote}`;
+      </div>${transportNote}${staleNote}`;
   $("result").innerHTML = `<div class="result-box">${statusTag}${body}</div>`;
 }
 
@@ -283,11 +287,12 @@ async function loadCache() {
       <td class="mono">${e.addresses.length ? e.addresses.map(a => `<span class="addr">${a}</span>`).join(" ") : "—"}</td>
       <td class="mono">${e.upstream_id}</td>
       <td class="mono">${e.suffix || "*"}</td>
+      <td class="mono" style="font-size:11px">${e.udp_truncated ? "TCP 补查" : (e.transport || "udp").toUpperCase()}</td>
       <td class="mono">${e.ttl}s</td>
       <td class="mono" style="min-width:110px">${e.remaining_ttl}s
         <div class="ttl-bar"><i style="width:${pct}%"></i></div></td>
     </tr>`;
-  }).join("") || '<tr><td colspan="7" class="muted">暂无缓存</td></tr>';
+  }).join("") || '<tr><td colspan="8" class="muted">暂无缓存</td></tr>';
 }
 
 // ---------- 初始化 ----------

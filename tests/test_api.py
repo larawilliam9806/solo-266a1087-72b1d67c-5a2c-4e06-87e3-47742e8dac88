@@ -23,7 +23,11 @@ def _free_port() -> int:
 @pytest.fixture()
 def client():
     port_a, port_b = _free_port(), _free_port()
-    fake_a = FakeUpstream("127.0.0.1", port_a, ip_base=10)
+    fake_a = FakeUpstream(
+        "127.0.0.1", port_a, ip_base=10,
+        truncate_names={"trunc.corp.local"}, partial_answers=1,
+        full_answers=3, partial_ttl=5, full_ttl=60,
+    )
     fake_b = FakeUpstream("127.0.0.1", port_b, ip_base=172)
     registry = UpstreamRegistry(
         [
@@ -121,3 +125,41 @@ def test_index_page_served(client):
     r = c.get("/")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
+
+
+def test_resolve_truncated_udp_returns_full_tcp_answer(client):
+    """网页试查：UDP 截断时用 TCP 补查，页面结果与缓存 TTL 以完整答复为准。"""
+    c, fake_a, fake_b, app = client
+    r = c.get("/api/resolve", params={"name": "trunc.corp.local"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "OK"
+    assert data["addresses"] == ["10.9.9.1", "10.9.9.2", "10.9.9.3"]
+    assert data["ttl"] == 60  # TCP 完整答复的 TTL，不是 UDP 部分答复的 5
+    assert data["transport"] == "tcp" and data["udp_truncated"] is True
+    assert fake_a.udp_query_count == 1 and fake_a.tcp_query_count == 1
+
+    # 缓存条目同样来自 TCP 完整答复
+    entries = c.get("/api/cache").json()["entries"]
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry["addresses"] == ["10.9.9.1", "10.9.9.2", "10.9.9.3"]
+    assert entry["ttl"] == 60 and entry["udp_truncated"] is True
+
+    # 第二次命中缓存，不再回源
+    again = c.get("/api/resolve", params={"name": "trunc.corp.local"}).json()
+    assert again["cached_hit"] is True
+    assert again["addresses"] == ["10.9.9.1", "10.9.9.2", "10.9.9.3"]
+    assert fake_a.query_count == 2
+
+
+def test_resolve_tcp_failure_returns_error_without_caching(client):
+    """TCP 补查失败：页面显示解析失败，本次结果不入缓存。"""
+    c, fake_a, fake_b, app = client
+    fake_a._tcp_server.shutdown()
+    fake_a._tcp_server.server_close()
+
+    data = c.get("/api/resolve", params={"name": "trunc.corp.local"}).json()
+    assert data["status"] == "ERROR"
+    assert "TCP" in data["error"]
+    assert c.get("/api/cache").json()["stats"]["entries"] == 0

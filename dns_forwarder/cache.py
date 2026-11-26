@@ -27,6 +27,8 @@ class CacheEntry:
     suffix: str                   # 命中的规则后缀
     expire_at: float              # monotonic 过期时刻
     created_at: float = field(default_factory=time.monotonic)
+    transport: str = "udp"        # 生效答复来自 "udp" 还是 TCP 补查
+    udp_truncated: bool = False   # 是否经历过 UDP 截断、由 TCP 补查得到
 
     def is_expired(self, now: float | None = None) -> bool:
         return (now or time.monotonic()) >= self.expire_at
@@ -44,6 +46,8 @@ class CacheEntry:
             "remaining_ttl": self.remaining_ttl(now),
             "upstream_id": self.upstream_id,
             "suffix": self.suffix,
+            "transport": self.transport,
+            "udp_truncated": self.udp_truncated,
         }
 
 
